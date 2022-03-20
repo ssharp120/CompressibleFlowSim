@@ -36,9 +36,9 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 
 	private JFrame mainFrame;
 	private String title = "Compressible Flow Sim";
-	private int preferredWidth = 800;
+	private int preferredWidth = 1020;
 	private int preferredHeight = 600;
-	private final int minimumWidth = 800;
+	private final int minimumWidth = 1020;
 	private final int minimumHeight = 600;
 	private int currentWidth = 800;
 	private int currentHeight = 600;
@@ -257,7 +257,7 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			
 			String family = g.getFont().getFamily();
 			
-			g.setFont(new Font(family, Font.BOLD, 10 + length_scale));
+			g.setFont(new Font(family, Font.PLAIN, 10 + length_scale));
 			String plenum_po_string = String.format("%1$.3f kPa", plenum_chamber_pressure / 1000);
 			String plenum_to_string = String.format("%1$.2f K", plenum_chamber_temperature);
 			g.drawString(plenum_po_string, centerX - halflength - (plenum_chamber_width) + (length_scale << 2), centerY + (defaultFontMetrics.getHeight() >> 1));
@@ -279,17 +279,18 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 				g.fillOval(centerX - halflength + i, centerY + halfheight - (int) Math.round(totalTemperaturePoints[i] / 1000 * (halfheight << 1)), 2, 2);
 			}
 			
-			renderAxis(g, 0, centerX + halflength, centerY - halfheight, halfheight << 1, 1000, family, 12, Color.BLUE);
-			renderAxis(g, 1, centerX + halflength + 40, centerY - halfheight, halfheight << 1, 1000, family, 12, Color.RED);
+			renderAxis(g, 0, centerX + halflength, centerY - halfheight, halfheight << 1, 1000, family, 12, Color.BLUE, " kPa");
+			renderAxis(g, 1, centerX + halflength + 40, centerY - halfheight, halfheight << 1, 1000, family, 12, Color.RED, "  K");
 			renderLegend(g, new String[] {"Total Pressure", "Total Temperature"}, family, 12, new Color[] {Color.BLUE, Color.RED});
 		}
 		
-		private void renderAxis(Graphics g, int index, int startX, int startY, int height, int max, String family, int size, Color color) {
+		private void renderAxis(Graphics g, int index, int startX, int startY, int height, int max, String family, int size, Color color, String unit) {
 			g.setColor(color);
 			g.drawLine(startX, startY, startX, startY + height);
 			
 			g.setFont(new Font(family, Font.PLAIN, size));
 			// Tick marks
+			g.drawString(unit, startX + 8, startY - 10);
 			for (int j = 0; j <= 10; j++) {
 				for (int jj = 0; j < 10 && jj < 10; jj++) {
 					g.drawLine(startX, startY + j * height / 10 + jj * height / 100, startX + 2, startY + j * height / 10 + jj * height / 100);
@@ -301,15 +302,15 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 		}
 		
 		private void renderLegend(Graphics g, String[] labels, String family, int size, Color[] colors) {
+			int startX = currentWidth - 144 - 32;
+			int startY = (currentWidth >> 5) + 16;
+			
 			g.setColor(Color.WHITE);
-			g.fillRect(currentWidth - (currentWidth >> 3) - (currentWidth >> 4), currentWidth >> 5, 144, 128);
+			g.fillRect(startX, startY - 16, 144, 128);
 			g.setColor(Color.BLACK);
-			g.drawRect(currentWidth - (currentWidth >> 3) - (currentWidth >> 4), currentWidth >> 5, 144, 128);
+			g.drawRect(startX, startY - 16, 144, 128);
 			
 			g.setFont(new Font(family, Font.PLAIN, size));
-			
-			int startX = currentWidth - (currentWidth >> 3) - (currentWidth >> 4) + 32;
-			int startY = (currentWidth >> 5) + 16;
 			
 			int stringLength = labels.length;
 			int colorLength = colors.length;
@@ -318,8 +319,8 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			for (int j = 0; j < smallestLength; j++) {
 				int spacing = j * (g.getFontMetrics().getHeight() + 4);
 				g.setColor(colors[j]);
-				g.drawLine(startX - 16, startY + spacing, startX - 8, startY + spacing);
-				g.drawString(labels[j], startX, startY + spacing + 4);
+				g.drawLine(startX + 16, startY + spacing, startX + 32, startY + spacing);
+				g.drawString(labels[j], startX + 36, startY + spacing + 4);
 			}
 		}
 	}
