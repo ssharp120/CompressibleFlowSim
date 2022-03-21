@@ -6,6 +6,7 @@ import java.awt.EventQueue;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
+import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
@@ -14,20 +15,26 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.util.ArrayList;
 
 import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
+import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JSlider;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
 import Functions.FileUtilities;
+import Functions.IsentropicRelations;
 
-public class MainMenu extends JPanel implements KeyListener, MouseListener, ChangeListener, ActionListener, Runnable {
+public class MainMenu extends JPanel implements ChangeListener, ActionListener, Runnable {
 
 	/**
 	 * 
@@ -42,30 +49,110 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 	private final int minimumHeight = 600;
 	private int currentWidth = 800;
 	private int currentHeight = 600;
-	private double currentRatio = currentWidth / currentHeight;
 	
 	private int length = 400;
 	private int plenum_chamber_width = 100;
 	
+	private double specific_heat_p = 1005;
+	private double specific_heat_k = 1.4;
+	private double gas_constant_R = 287; // J / kg * K;
+	
 	private double plenum_chamber_pressure = 101325.0; // Pa
 	private double plenum_chamber_temperature = 303.15; // K
+	private double plenum_chamber_velocity = 0; // m/s
+	private double plenum_chamber_mach = 0;
 	private double[] totalPressurePoints = new double[1000];
 	private double[] totalTemperaturePoints = new double[1000];
+	private double[] velocityPoints = new double[1000];
+	private double[] machPoints = new double[1000];
+	private double[] staticPressurePoints = new double[1000];
+	private double[] staticTemperaturePoints = new double[1000];
+	
+	private ArrayList<Color> colorOrder;
 	
 	private JPanel GUIPanel;
 	
-	private JLabel optionsTitleLabel;
-	private JLabel totalLengthLabel;
+	private JPanel leftBorderPanel;
+	private JPanel rightBorderPanel;
+	
+	private JPanel plotOptionsPanel;
+	
+	private JLabel plotOptionsTitleLabel;
+	
+	private JCheckBox axesCheckbox;
+	private boolean axesEnabled = true;
+	
+	private JCheckBox backgroundCheckbox;
+	private boolean backgroundEnabled = true;
+	
+	private JCheckBox gridCheckbox;
+	private boolean gridEnabled = true;
+	
+	private JCheckBox fineGridCheckbox;
+	private boolean fineGridEnabled = true;
+	
+	private JCheckBox legendCheckbox;
+	private boolean legendEnabled = true;
+	
 	private JPanel lengthPanel;
+	private JLabel totalLengthLabel;
 	private JSlider totalLengthSlider;
-	private JPanel plenumPressurePanel;
+	
+	private JPanel flowOptionsPanel;
+	
+	private JLabel flowOptionsTitleLabel;
+	
+	private JPanel plenumPanel;
+	
 	private JLabel plenumPressureLabel;
 	private JTextField plenumPressureTextbox;
 	private JLabel plenumPressureUnitLabel;
-	private JPanel plenumTemperaturePanel;
+	
 	private JLabel plenumTemperatureLabel;
 	private JTextField plenumTemperatureTextbox;
 	private JLabel plenumTemperatureUnitLabel;
+	
+	private JLabel plenumVelocityLabel;
+	private JLabel plenumMachLabel;
+	private JTextField plenumVelocityTextbox;
+	private JTextField plenumMachTextbox;
+	private JLabel plenumVelocityUnitLabel;
+	
+	private JPanel flowSelectorPanel;
+	private JPanel flowSelectorSubPanel;
+	private JLabel flowSelectorLabel;
+	private JRadioButton noneButton;
+	private JRadioButton fannoButton;
+	private JRadioButton rayleighButton;
+	private JRadioButton convergingButton;
+	private JRadioButton divergingButton;
+	private JRadioButton convergingDivergingButton;
+	private ButtonGroup flowSelector;
+	
+	private JPanel fannoPanel;
+	//
+	
+	private JPanel rayleighPanel;
+	//
+	
+	private JPanel convergingPanel;
+	//
+	
+	private JPanel divergingPanel;
+	//
+	
+	private JPanel convergingDivergingPanel;
+	//
+	
+	private enum FLOW_MODE {
+			NONE,
+			FANNO,
+			RAYLEIGH,
+			CONVERGING,
+			DIVERGING,
+			CONVERGING_DIVERGING;
+	}
+	private FLOW_MODE flowMode = FLOW_MODE.NONE;
 	
 	private GraphicsThread graphicsThread;
 	
@@ -89,7 +176,7 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 		frame.setBackground(Color.BLUE);
 		frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		frame.setResizable(true);
-		frame.setMinimumSize(new Dimension(minimumWidth, minimumHeight + 128));
+		frame.setMinimumSize(new Dimension(minimumWidth, minimumHeight + 512));
 		
 		// Exit confirmation dialog
 		frame.addWindowListener(new java.awt.event.WindowAdapter() {
@@ -111,7 +198,6 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			public void componentResized(ComponentEvent e) {
 				currentWidth = getWidth();
 				currentHeight = getHeight();
-				currentRatio = (currentWidth + 1) / (currentHeight + 1);
 			}
 		});
 		
@@ -119,17 +205,166 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 	}
 	
 	private JPanel initializeGUIPanel() {
-		JPanel panel = new JPanel();
+		// Overall and top level panels use line and page axes
+		// Could be utilized for portrait/landscape mode
+		JPanel overallPanel = new JPanel();		
+		overallPanel.setLayout(new BoxLayout(overallPanel, BoxLayout.LINE_AXIS));
 		
-		panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
+		Dimension maximumTextboxSize = new Dimension(200, 25);
 		
-		optionsTitleLabel = new JLabel("Options");
-		panel.add(optionsTitleLabel);
+		Dimension borderSize = new Dimension(125, 1);
+		
+		leftBorderPanel = new JPanel();
+		leftBorderPanel.setMinimumSize(borderSize);
+		leftBorderPanel.setMaximumSize(borderSize);
+		//leftBorderPanel.setBackground(Color.DARK_GRAY);
+		overallPanel.add(leftBorderPanel);
+		
+		flowOptionsPanel = new JPanel();
+		flowOptionsPanel.setLayout(new BoxLayout(flowOptionsPanel, BoxLayout.PAGE_AXIS));
+		
+		flowOptionsTitleLabel = new JLabel("Flow Options");
+		flowOptionsPanel.add(flowOptionsTitleLabel);
+		
+		plenumPanel = new JPanel();
+		plenumPanel.setLayout(new GridLayout(4, 3));
+		((GridLayout) plenumPanel.getLayout()).setHgap(4);
+		
+		plenumPressureTextbox = new JTextField();
+		plenumPressureTextbox.addActionListener(this);
+		plenumPressureTextbox.setMaximumSize(maximumTextboxSize);
+		
+		plenumPressureLabel = new JLabel("Plenum chamber pressure:");
+		plenumPressureUnitLabel = new JLabel("Pa.");
+		
+		plenumTemperatureTextbox = new JTextField();
+		plenumTemperatureTextbox.addActionListener(this);
+		plenumTemperatureTextbox.setMaximumSize(maximumTextboxSize);
+		
+		plenumTemperatureLabel = new JLabel("Plenum chamber temperature:");
+		plenumTemperatureUnitLabel = new JLabel("K");
+		
+		plenumVelocityLabel = new JLabel("Plenum chamber exit velocity:");
+		plenumMachLabel = new JLabel("Plenum chamber exit mach:");
+		
+		plenumVelocityTextbox = new JTextField();
+		plenumVelocityTextbox.addActionListener(this);
+		plenumVelocityTextbox.setMaximumSize(maximumTextboxSize);
+		
+		plenumMachTextbox = new JTextField();
+		plenumMachTextbox.addActionListener(this);
+		plenumMachTextbox.setMaximumSize(maximumTextboxSize);
+		
+		plenumVelocityUnitLabel = new JLabel("m/s");
+		
+		plenumPanel.add(plenumPressureLabel);
+		plenumPanel.add(plenumPressureTextbox);
+		plenumPanel.add(plenumPressureUnitLabel);
+		plenumPanel.add(plenumTemperatureLabel);
+		plenumPanel.add(plenumTemperatureTextbox);
+		plenumPanel.add(plenumTemperatureUnitLabel);
+		plenumPanel.add(plenumVelocityLabel);
+		plenumPanel.add(plenumVelocityTextbox);
+		plenumPanel.add(plenumVelocityUnitLabel);
+		plenumPanel.add(plenumMachLabel);
+		plenumPanel.add(plenumMachTextbox);
+		
+		plenumPanel.setMaximumSize(new Dimension(maximumTextboxSize.width * 3, maximumTextboxSize.height));
+		
+		flowOptionsPanel.add(plenumPanel);		
+		
+		flowSelectorPanel = new JPanel();
+		// Leave as default FlowLayout to avoid clipping
+		//flowSelectorPanel.setLayout(new BoxLayout(flowSelectorPanel, BoxLayout.X_AXIS));
+		
+		flowSelectorLabel = new JLabel("Flow type:      ");
+		
+		noneButton = new JRadioButton("None");
+		noneButton.setMnemonic(KeyEvent.VK_N);
+		noneButton.setSelected(true);
+		
+		fannoButton = new JRadioButton("Fanno Flow");
+		fannoButton.setMnemonic(KeyEvent.VK_F);
+		
+		rayleighButton = new JRadioButton("Rayleigh Flow");
+		rayleighButton.setMnemonic(KeyEvent.VK_R);
+		
+		convergingButton = new JRadioButton("Converging Nozzle");
+		convergingButton.setMnemonic(KeyEvent.VK_C);
+		
+		divergingButton = new JRadioButton("Diverging Nozzle");
+		divergingButton.setMnemonic(KeyEvent.VK_D);
+		
+		convergingDivergingButton = new JRadioButton("Converging-Diverging Nozzle");
+		convergingDivergingButton.setMnemonic(KeyEvent.VK_Z);
+		
+		flowSelector = new ButtonGroup();
+		flowSelector.add(noneButton);
+		flowSelector.add(fannoButton);
+		flowSelector.add(rayleighButton);
+		flowSelector.add(convergingButton);
+		flowSelector.add(divergingButton);
+		flowSelector.add(convergingDivergingButton);
+		
+		flowSelectorSubPanel = new JPanel();
+		flowSelectorSubPanel.setLayout(new BoxLayout(flowSelectorSubPanel, BoxLayout.Y_AXIS));
+		
+		flowSelectorSubPanel.add(noneButton);
+		flowSelectorSubPanel.add(fannoButton);
+		flowSelectorSubPanel.add(rayleighButton);
+		flowSelectorSubPanel.add(convergingButton);
+		flowSelectorSubPanel.add(divergingButton);
+		flowSelectorSubPanel.add(convergingDivergingButton);
+		
+		flowSelectorPanel.add(flowSelectorLabel);
+		flowSelectorPanel.add(flowSelectorSubPanel);
+		
+		flowOptionsPanel.add(flowSelectorPanel);
+		
+		overallPanel.add(flowOptionsPanel);
+		
+		plotOptionsPanel = new JPanel();
+		plotOptionsPanel.setLayout(new BoxLayout(plotOptionsPanel, BoxLayout.PAGE_AXIS));
+		
+		plotOptionsTitleLabel = new JLabel("Plot Options:");
+		plotOptionsPanel.add(plotOptionsTitleLabel);
+		
+		axesCheckbox = new JCheckBox("Axes");
+		axesCheckbox.setMnemonic(KeyEvent.VK_X);
+		axesCheckbox.addActionListener(this);
+		axesCheckbox.setSelected(true);
+		
+		backgroundCheckbox = new JCheckBox("Background");
+		backgroundCheckbox.setMnemonic(KeyEvent.VK_B);
+		backgroundCheckbox.addActionListener(this);
+		backgroundCheckbox.setSelected(true);
+		
+		gridCheckbox = new JCheckBox("Grid");
+		gridCheckbox.setMnemonic(KeyEvent.VK_G);
+		gridCheckbox.addActionListener(this);
+		gridCheckbox.setSelected(true);
+
+		fineGridCheckbox = new JCheckBox("Fine Grid");
+		fineGridCheckbox.setMnemonic(KeyEvent.VK_I);
+		fineGridCheckbox.addActionListener(this);
+		fineGridCheckbox.setSelected(true);
+		
+		legendCheckbox = new JCheckBox("Legend");
+		legendCheckbox.setMnemonic(KeyEvent.VK_L);
+		legendCheckbox.addActionListener(this);
+		legendCheckbox.setSelected(true);
+		
+		plotOptionsPanel.add(axesCheckbox);
+		plotOptionsPanel.add(backgroundCheckbox);
+		plotOptionsPanel.add(gridCheckbox);
+		plotOptionsPanel.add(fineGridCheckbox);
+		plotOptionsPanel.add(legendCheckbox);
 		
 		lengthPanel = new JPanel();
 		lengthPanel.setLayout(new BoxLayout(lengthPanel, BoxLayout.X_AXIS));
 		
 		totalLengthSlider = new JSlider(JSlider.HORIZONTAL, 0, 100, 100);
+		totalLengthSlider.setMinimumSize(new Dimension(800, 100));
 		totalLengthSlider.setMajorTickSpacing(10);
 		totalLengthSlider.setMinorTickSpacing(1);
 		totalLengthSlider.setPaintTicks(true);
@@ -141,41 +376,17 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 		lengthPanel.add(totalLengthLabel);
 		lengthPanel.add(totalLengthSlider);
 		
-		panel.add(lengthPanel);
+		plotOptionsPanel.add(lengthPanel);
 		
-		plenumPressurePanel = new JPanel();
-		plenumPressurePanel.setLayout(new BoxLayout(plenumPressurePanel, BoxLayout.X_AXIS));
+		overallPanel.add(plotOptionsPanel);
 		
-		plenumPressureTextbox = new JTextField();
-		plenumPressureTextbox.addActionListener(this);
-		plenumPressureTextbox.setMaximumSize(new Dimension(200, 64));
+		rightBorderPanel = new JPanel();
+		rightBorderPanel.setMinimumSize(borderSize);
+		rightBorderPanel.setMaximumSize(borderSize);
+		//rightBorderPanel.setBackground(Color.DARK_GRAY);
+		overallPanel.add(rightBorderPanel);
 		
-		plenumPressureLabel = new JLabel("Plenum chamber pressure:      ");
-		plenumPressureUnitLabel = new JLabel("   Pa.");
-		
-		plenumPressurePanel.add(plenumPressureLabel);
-		plenumPressurePanel.add(plenumPressureTextbox);
-		plenumPressurePanel.add(plenumPressureUnitLabel);
-		
-		panel.add(plenumPressurePanel);
-		
-		plenumTemperaturePanel = new JPanel();
-		plenumTemperaturePanel.setLayout(new BoxLayout(plenumTemperaturePanel, BoxLayout.X_AXIS));
-		
-		plenumTemperatureTextbox = new JTextField();
-		plenumTemperatureTextbox.addActionListener(this);
-		plenumTemperatureTextbox.setMaximumSize(new Dimension(200, 64));
-		
-		plenumTemperatureLabel = new JLabel("Plenum chamber temperature:      ");
-		plenumTemperatureUnitLabel = new JLabel("   K");
-		
-		plenumTemperaturePanel.add(plenumTemperatureLabel);
-		plenumTemperaturePanel.add(plenumTemperatureTextbox);
-		plenumTemperaturePanel.add(plenumTemperatureUnitLabel);
-		
-		panel.add(plenumTemperaturePanel);
-		
-		return panel;
+		return overallPanel;
 	}
 	
 	public void exitSequence() {
@@ -210,10 +421,17 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			int halflength = length >> 1;
 			int halfheight = (currentHeight / 400) * 200;
 			
-			Color textColor = new Color(224, 224, 224);
+			Color plenumTextColor = new Color(224, 224, 224);
+			Color gridColor = new Color(116, 116, 116);
+			Color fineGridColor = new Color(132, 132, 132);
 			
-			g.setColor(Color.WHITE);
-			g.fillRect(centerX - halflength, centerY - halfheight, length, halfheight << 1);
+			if (backgroundEnabled) {
+				g.setColor(Color.WHITE);
+				g.fillRect(centerX - halflength, centerY - halfheight, length, halfheight << 1);
+				
+				gridColor = new Color(216, 216, 216);
+				fineGridColor = new Color(240, 240, 240);
+			}
 			
 			g.setColor(new Color(16, 16, 16));
 			// Upper Line
@@ -223,26 +441,46 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			g.drawLine(centerX - halflength, centerY - halfheight, centerX + halflength, centerY - halfheight);
 			
 			int length_tens = length / 10 / length_scale;
-			int height_tens = (halfheight << 1) / 10 / length_scale;
+			int height_tens = (halfheight << 1) / 10;
 			FontMetrics defaultFontMetrics = g.getFontMetrics();
-			for (int i = 0; i <= length_tens; i++) {
-				for (int j = 1; j < height_tens; j++) {
+			
+			if (fineGridEnabled) {
+				g.setColor(fineGridColor);
+				for (int i = 0; i < 100; i++) {
+					for (int j = 1; j < 100; j++) {
+						if (i > length/length_scale) break;
+						g.drawLine(centerX - halflength + i * length_scale, centerY + halfheight - 1, centerX - halflength + i * length_scale, centerY - halfheight + 1);
+						g.drawLine(centerX - halflength, centerY - halfheight + j * halfheight / 50, centerX + halflength, centerY - halfheight + j * halfheight / 50);
+					}
+				}
+			}
+			
+			if (axesEnabled || gridEnabled) {
+				for (int i = 0; i <= length_tens; i++) {
 					// Gridlines
-					g.setColor(textColor);
-					g.drawLine(centerX - halflength + i * 10 * length_scale, centerY + halfheight - 1, centerX - halflength + i * 10 * length_scale, centerY - halfheight + 1);
-					g.drawLine(centerX - halflength, centerY - halfheight + j * 10 * length_scale, centerX + halflength, centerY - halfheight + j * 10 * length_scale);
+					if (gridEnabled) {
+						for (int j = 1; j < 10; j++) {
+							g.setColor(gridColor);
+							g.drawLine(centerX - halflength + i * 10 * length_scale, centerY + halfheight - 1, centerX - halflength + i * 10 * length_scale, centerY - halfheight + 1);
+							g.drawLine(centerX - halflength, centerY - halfheight + j * halfheight / 5, centerX + halflength, centerY - halfheight + j * halfheight / 5);
+						}
+					}
+					
+					// Length axis
+					if (axesEnabled) {
+						for (int ii = 0; i < 10 && ii <= 10 && i * 10 + ii <= length / length_scale; ii++) {
+							g.setColor(new Color(64, 64, 64));
+							byte tickLength = 2;
+							if (ii % 10 == 0) tickLength = 4;
+							g.drawLine(centerX - halflength + i * 10 * length_scale + ii * length_scale, centerY + halfheight + 1, centerX - halflength + i * 10 * length_scale + ii * length_scale, centerY + halfheight + 1 + tickLength);
+						}
+						
+						// Tick labels
+						g.setColor(new Color(8, 8, 8));
+						String tick = Integer.toString(i * 10);
+						g.drawString(tick, centerX - halflength + i * 10 * length_scale - defaultFontMetrics.stringWidth(tick) + 8, centerY + halfheight + 24);
+					}
 				}
-				
-				for (int ii = 0; i < 10 && ii <= 10 && i * 10 + ii <= length / length_scale; ii++) {
-					g.setColor(new Color(64, 64, 64));
-					byte tickLength = 2;
-					if (ii % 10 == 0) tickLength = 4;
-					g.drawLine(centerX - halflength + i * 10 * length_scale + ii * length_scale, centerY + halfheight + 1, centerX - halflength + i * 10 * length_scale + ii * length_scale, centerY + halfheight + 1 + tickLength);
-				}
-				// Tick labels
-				g.setColor(new Color(8, 8, 8));
-				String tick = Integer.toString(i * 10);
-				g.drawString(tick, centerX - halflength + i * 10 * length_scale - defaultFontMetrics.stringWidth(tick) + 8, centerY + halfheight + 24);
 			}
 			
 			// Plenum chamber graphic
@@ -253,39 +491,71 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			g.drawRect(centerX - halflength - plenum_chamber_width, centerY - halfheight, plenum_chamber_width, halfheight << 1);
 		
 			// Plenum chamber pressure label
-			g.setColor(textColor);
+			g.setColor(plenumTextColor);
 			
 			String family = g.getFont().getFamily();
 			
 			g.setFont(new Font(family, Font.PLAIN, 10 + length_scale));
 			String plenum_po_string = String.format("%1$.3f kPa", plenum_chamber_pressure / 1000);
 			String plenum_to_string = String.format("%1$.2f K", plenum_chamber_temperature);
-			g.drawString(plenum_po_string, centerX - halflength - (plenum_chamber_width) + (length_scale << 2), centerY + (defaultFontMetrics.getHeight() >> 1));
-			g.drawString(plenum_to_string, centerX - halflength - (plenum_chamber_width) + (length_scale << 2), centerY + (defaultFontMetrics.getHeight() >> 1) + 24);
-		
+			String plenum_v_string = String.format("%1$.3f m/s", plenum_chamber_velocity);
+			String plenum_m_string = String.format("Mach %1.4f", plenum_chamber_mach);
+			g.drawString(plenum_po_string, centerX - halflength - (plenum_chamber_width) + (length_scale << 2), centerY + (defaultFontMetrics.getHeight() >> 1) - 64);
+			g.drawString(plenum_to_string, centerX - halflength - (plenum_chamber_width) + (length_scale << 2), centerY + (defaultFontMetrics.getHeight() >> 1) - 32);
+			g.drawString(plenum_v_string, centerX - halflength - (plenum_chamber_width) + (length_scale << 2), centerY + (defaultFontMetrics.getHeight() >> 1));
+			g.drawString(plenum_m_string, centerX - halflength - (plenum_chamber_width) + (length_scale << 2), centerY + (defaultFontMetrics.getHeight() >> 1) + 32);
+			
 			recalculateProperties();
 			
+			colorOrder = new ArrayList<Color>();
+			
+			// Static pressure
+			plot(g, centerX - halflength, centerY + halfheight, halfheight << 1, staticPressurePoints, 1000000, Color.GRAY);
+			
 			// Total pressure
-			int polength = totalPressurePoints.length;
-			for (int i = 0; i < length && i < polength; i++) {
-				g.setColor(Color.BLUE);
-				g.fillOval(centerX - halflength + i, centerY + halfheight - (int) Math.round(totalPressurePoints[i] / 1000000 * (halfheight << 1)), 2, 2);
-			}
+			plot(g, centerX - halflength, centerY + halfheight, halfheight << 1, totalPressurePoints, 1000000);
+			
+			// Static temperature
+			plot(g, centerX - halflength, centerY + halfheight, halfheight << 1, staticTemperaturePoints, 1000, new Color(224, 125, 125));
 			
 			// Total temperature
-			int tolength = totalTemperaturePoints.length;
-			for (int i = 0; i < length && i < tolength; i++) {
-				g.setColor(Color.RED);
-				g.fillOval(centerX - halflength + i, centerY + halfheight - (int) Math.round(totalTemperaturePoints[i] / 1000 * (halfheight << 1)), 2, 2);
-			}
+			plot(g, centerX - halflength, centerY + halfheight, halfheight << 1, totalTemperaturePoints, 1000, Color.RED);
 			
-			renderAxis(g, 0, centerX + halflength, centerY - halfheight, halfheight << 1, 1000, family, 12, Color.BLUE, " kPa");
-			renderAxis(g, 1, centerX + halflength + 40, centerY - halfheight, halfheight << 1, 1000, family, 12, Color.RED, "  K");
-			renderLegend(g, new String[] {"Total Pressure", "Total Temperature"}, family, 12, new Color[] {Color.BLUE, Color.RED});
+			// Velocity
+			plot(g, centerX - halflength, centerY + halfheight, halfheight << 1, velocityPoints, 1000, new Color(68, 128, 69));
+			
+			// Mach
+			plot(g, centerX - halflength, centerY + halfheight, halfheight << 1, machPoints, 10, Color.BLUE);
+			
+			if (axesEnabled) {
+				renderAxis(g, 1, centerX + halflength, centerY - halfheight, halfheight << 1, 1000, family, 12, " kPa");
+				renderAxis(g, 3, centerX + halflength + 40, centerY - halfheight, halfheight << 1, 1000, family, 12, "  K");
+				renderAxis(g, 4, centerX + halflength + 80, centerY - halfheight, halfheight << 1, 1000, family, 12, " m/s");
+				renderAxis(g, 5, centerX + halflength + 120, centerY - halfheight, halfheight << 1, 10, family, 12, "Mach");
+			}
+			if (legendEnabled) renderLegend(g, new String[] {"Static Pressure", "Total Pressure", "Static Temperature", "Total Temperature", "Velocity", "Mach"}, family, 12);
+		}
+
+		private void plot(Graphics g, int startX, int startY, int height, double[] y, double scale) {
+			plot(g, startX, startY, height, y, scale, Color.BLACK);
 		}
 		
-		private void renderAxis(Graphics g, int index, int startX, int startY, int height, int max, String family, int size, Color color, String unit) {
-			g.setColor(color);
+		private void plot(Graphics g, int startX, int startY, int height, double[] y, double scale, Color color) {
+			int vlength = y.length;
+			for (int i = 0; i < length && i < vlength; i++) {
+				g.setColor(color);
+				g.fillOval(startX + i, startY - (int) Math.round(y[i] / scale * height), 2, 2);
+			}
+			colorOrder.add(color);
+		}
+		
+		private void renderAxis(Graphics g, int index, int startX, int startY, int height, int max, String family, int size) {
+			renderAxis(g, index, startX, startY, height, max, family, size, "");
+		}
+		
+		private void renderAxis(Graphics g, int index, int startX, int startY, int height, int max, String family, int size, String unit) {
+			if (index >= colorOrder.size()) g.setColor(Color.BLACK);
+			else g.setColor(colorOrder.get(index));
 			g.drawLine(startX, startY, startX, startY + height);
 			
 			g.setFont(new Font(family, Font.PLAIN, size));
@@ -301,7 +571,7 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			}
 		}
 		
-		private void renderLegend(Graphics g, String[] labels, String family, int size, Color[] colors) {
+		private void renderLegend(Graphics g, String[] labels, String family, int size) {
 			int startX = currentWidth - 144 - 32;
 			int startY = (currentWidth >> 5) + 16;
 			
@@ -313,13 +583,19 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 			g.setFont(new Font(family, Font.PLAIN, size));
 			
 			int stringLength = labels.length;
-			int colorLength = colors.length;
+			int colorLength = colorOrder.size();
 			int smallestLength = Math.min(stringLength, colorLength);
+			int height = g.getFontMetrics().getHeight();
 			
 			for (int j = 0; j < smallestLength; j++) {
-				int spacing = j * (g.getFontMetrics().getHeight() + 4);
-				g.setColor(colors[j]);
+				// Line
+				int spacing = j * (height + 4);
+				if (j >= colorLength) g.setColor(Color.GRAY);
+				else g.setColor(colorOrder.get(j));
 				g.drawLine(startX + 16, startY + spacing, startX + 32, startY + spacing);
+				
+				// Text
+				g.setColor(new Color(24, 24, 24));
 				g.drawString(labels[j], startX + 36, startY + spacing + 4);
 			}
 		}
@@ -332,56 +608,10 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 	}
 
 	@Override
-	public void mouseClicked(MouseEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void mousePressed(MouseEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void mouseReleased(MouseEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void mouseEntered(MouseEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void mouseExited(MouseEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void keyTyped(KeyEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void keyPressed(KeyEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void keyReleased(KeyEvent e) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
 	public void run() {
 		graphicsThread = new GraphicsThread();
+		
+		colorOrder = new ArrayList<Color>();
 		
 		mainFrame = initializeFrame(title, minimumWidth, minimumHeight);
 		
@@ -395,6 +625,11 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 		mainFrame.add(this);
 		mainFrame.add(GUIPanel);
 		
+		plenumPressureTextbox.setText(Double.toString(plenum_chamber_pressure));
+		plenumTemperatureTextbox.setText(Double.toString(plenum_chamber_temperature));
+		plenumVelocityTextbox.setText(Double.toString(plenum_chamber_velocity));
+		plenumMachTextbox.setText(Double.toString(plenum_chamber_mach));
+		
 		setVisible(true);
 		GUIPanel.setVisible(true);
 		
@@ -403,8 +638,6 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 		mainFrame.setVisible(true);
 		
 		recalculateProperties();
-		
-		repaint();
 	}
 	
 	public double[] calculateTotalPressure(int length, double initialTotalPressure) {
@@ -427,9 +660,54 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 		return totalTemperatures;
 	}
 	
+	public double[] calculateVelocity(int length, double initialVelocity) {
+		if (length < 0) return null;
+		else if (length == 0) length = 1;
+		double[] velocities = new double[length];
+		for (int i = 0; i < length; i++) {
+			velocities[i] = initialVelocity;
+		}
+		return velocities;
+	}
+	
+	public double[] calculateMach(int length, double[] staticTemperatures, double[] velocities) {
+		if (length < 0) return null;
+		else if (length == 0) length = 1;
+		double[] mach = new double[length];
+		for (int i = 0; i < length; i++) {
+			mach[i] = IsentropicRelations.mach(velocities[i], staticTemperatures[i], specific_heat_k, gas_constant_R);
+		}
+		return mach;
+	}
+	
+	public double[] calculateStaticPressure(int length, double staticTemperatures[], double totalPressures[], double[] velocities) {
+		if (length < 0) return null;
+		else if (length == 0) length = 1;
+		double[] staticPressures = new double[length];
+		for (int i = 0; i < length; i++) {
+			staticPressures[i] = totalPressures[i] / IsentropicRelations.totalStaticPressureRatioFromTotalStaticTemperatureRatio(IsentropicRelations.totalStaticTemperatureRatio(staticTemperatures[i], velocities[i], specific_heat_p), specific_heat_k);
+		}
+		return staticPressures;
+	}
+	
+	public double[] calculateStaticTemperature(int length, double[] totalTemperatures, double[] velocities) {
+		if (length < 0) return null;
+		else if (length == 0) length = 1;
+		double[] staticTemperatures = new double[length];
+		for (int i = 0; i < length; i++) {
+			staticTemperatures[i] =IsentropicRelations.staticTemperatureFromTotalTemperature(totalTemperatures[i], velocities[i], specific_heat_p);
+		}
+		return staticTemperatures;
+	}
+	
 	public void recalculateProperties() {
 		totalPressurePoints = calculateTotalPressure(length, plenum_chamber_pressure);
 		totalTemperaturePoints = calculateTotalTemperature(length, plenum_chamber_temperature);
+		velocityPoints = calculateVelocity(length, plenum_chamber_velocity);
+		staticTemperaturePoints = calculateStaticTemperature(length, totalTemperaturePoints, velocityPoints);
+		staticPressurePoints = calculateStaticPressure(length, staticTemperaturePoints, totalPressurePoints, velocityPoints);
+		machPoints = calculateMach(length, staticTemperaturePoints, velocityPoints);
+		if (!(machPoints == null)) plenum_chamber_mach = machPoints[0];
 		
 		repaint();
 	}
@@ -444,34 +722,39 @@ public class MainMenu extends JPanel implements KeyListener, MouseListener, Chan
 	public void actionPerformed(ActionEvent e) {
 		Object source = e.getSource();
 		if (source.equals(plenumPressureTextbox)) {
-			Double plenum_text_pressure = 0.0;
-			try {
-				plenum_text_pressure = Double.parseDouble(plenumPressureTextbox.getText());
-				if (plenum_text_pressure > 1000000) plenum_text_pressure = (double) 1000000;
-			}
-			catch (NumberFormatException exc) {
-				return;
-			}
-			
-			if (plenum_text_pressure > 0.0) {
-				plenum_chamber_pressure = plenum_text_pressure;
-				recalculateProperties();
-			} 
-			//plenum_chamber_pressure = 0;
+			plenum_chamber_pressure = getPlenumChamberPropertyFromTextbox(plenumPressureTextbox, 0, 1000000, plenum_chamber_pressure);
 		} else if (source.equals(plenumTemperatureTextbox)) {
-			Double plenum_text_temperature = 0.0;
-			try {
-				plenum_text_temperature = Double.parseDouble(plenumTemperatureTextbox.getText());
-				if (plenum_text_temperature > 1000) plenum_text_temperature = (double) 1000;
-			}
-			catch (NumberFormatException exc) {
-				return;
-			}
-			
-			if (plenum_text_temperature > 0.0) {
-				plenum_chamber_temperature = plenum_text_temperature;
-				recalculateProperties();
-			} 
+			plenum_chamber_temperature = getPlenumChamberPropertyFromTextbox(plenumTemperatureTextbox, 0, 1000, plenum_chamber_temperature);
+		} else if (source.equals(plenumVelocityTextbox)) {
+			plenum_chamber_velocity = getPlenumChamberPropertyFromTextbox(plenumVelocityTextbox, 0, 1000, plenum_chamber_velocity);
+		} else if (source.equals(plenumMachTextbox)) {
+			plenum_chamber_mach = getPlenumChamberPropertyFromTextbox(plenumMachTextbox, 0, 10, plenum_chamber_mach);
+		} else if (source.equals(legendCheckbox)) {
+			legendEnabled = legendCheckbox.isSelected();
+		} else if (source.equals(axesCheckbox)) {
+			axesEnabled = axesCheckbox.isSelected();
+		} else if (source.equals(gridCheckbox)) {
+			gridEnabled = gridCheckbox.isSelected();
+		} else if (source.equals(fineGridCheckbox)) {
+			fineGridEnabled = fineGridCheckbox.isSelected();
+		} else if (source.equals(backgroundCheckbox)) {
+			backgroundEnabled = backgroundCheckbox.isSelected();
 		}
+	}
+	
+	public double getPlenumChamberPropertyFromTextbox(JTextField textbox, double min, double max, double init) {
+		if (min > max) throw new IllegalArgumentException("Minimum is greater than maximum");
+		double bounded_value;
+		try {
+			bounded_value = Math.min(max, Math.max(min, Double.parseDouble(textbox.getText()))); 
+		}
+		catch (NumberFormatException exc) {
+			textbox.setText(Double.toString(init));
+			return init;
+		}
+		
+		textbox.setText(Double.toString(bounded_value));
+		if (!(bounded_value == init)) recalculateProperties();
+		return bounded_value;
 	}
 }
